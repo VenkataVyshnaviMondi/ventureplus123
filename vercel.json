@@ -1,0 +1,65 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "backend": {
+      "root": "backend",
+      "framework": "express",
+      "entrypoint": "index.mjs",
+      "bindings": [
+        {
+          "env": "SERVER_INTERNAL_URL",
+          "format": "url",
+          "service": "server",
+          "type": "service"
+        }
+      ]
+    },
+    "client": {
+      "root": "client",
+      "framework": "vite",
+      "devCommand": "npm run dev -- --port $PORT",
+      "buildCommand": "npm run build",
+      "outputDirectory": "dist",
+      "rewrites": [
+        {
+          "source": "/:path((?!@|src/|node_modules/|assets/|.*\\.).*)",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    "server": {
+      "root": "server",
+      "framework": "express",
+      "entrypoint": "src/app.ts",
+      "buildCommand": "npm run build",
+      "devCommand": "npm run dev"
+    }
+  },
+  "rewrites": [
+    {
+      "destination": {
+        "service": "backend"
+      },
+      "source": "/api"
+    },
+    {
+      "destination": {
+        "service": "backend"
+      },
+      "source": "/api/(.*)"
+    },
+    {
+      "destination": {
+        "service": "backend"
+      },
+      "source": "/uploads/(.*)"
+    },
+    {
+      "destination": {
+        "service": "client",
+        "path": "/$1"
+      },
+      "source": "/(.*)"
+    }
+  ]
+}
