@@ -5,7 +5,7 @@ import { authApi, type User } from "@/services/api";
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string, adminCode?: string) => Promise<User>;
+  login: (email: string, password: string, adminCode?: string, expectedRole?: User["role"]) => Promise<User>;
   register: (payload: {
     email: string;
     password: string;
@@ -27,8 +27,12 @@ const LOCAL_STORAGE_KEY = "estatehub_user";
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(() => {
-    const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-    return cached ? (JSON.parse(cached) as User) : null;
+    try {
+      const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+      return cached ? (JSON.parse(cached) as User) : null;
+    } catch {
+      return null;
+    }
   });
   const [loading, setLoading] = useState(true);
 
@@ -49,8 +53,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     syncUser();
   }, []);
 
-  const login = async (email: string, password: string, adminCode?: string) => {
-    const response = await authApi.login(email, password, adminCode);
+  const login = async (email: string, password: string, adminCode?: string, expectedRole?: User["role"]) => {
+    const response = await authApi.login(email, password, adminCode, expectedRole);
     setUser(response.data.user);
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(response.data.user));
     return response.data.user;
@@ -64,9 +68,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = async () => {
-    await authApi.logout();
-    setUser(null);
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    try {
+      await authApi.logout();
+    } finally {
+      setUser(null);
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
   };
 
   const value = useMemo(() => ({ user, loading, login, register, logout }), [user, loading]);

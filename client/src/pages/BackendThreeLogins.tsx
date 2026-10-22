@@ -147,7 +147,7 @@ const BackendThreeLogins = () => {
     setLoading(true);
 
     try {
-      const loggedInUser = await login(email, password);
+      const loggedInUser = await login(email.trim(), password, undefined, roleMap[activeTab]);
       const expectedRole = roleMap[activeTab];
 
       if (loggedInUser.role !== expectedRole) {
@@ -196,8 +196,8 @@ const BackendThreeLogins = () => {
         department: activeTab === "employee" ? department : undefined,
         position: activeTab === "employee" ? position : undefined,
         employeeId: activeTab === "employee" ? employeeId : undefined,
-        phoneNumber: activeTab === "customer" ? phone : undefined,
-        address: activeTab === "customer" ? address : undefined
+        phoneNumber: undefined,
+        address: undefined
       });
 
       toast.success(`${user.displayName} account created successfully!`);
