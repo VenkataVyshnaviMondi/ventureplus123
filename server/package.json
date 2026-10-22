@@ -13,6 +13,8 @@
     "lint": "eslint .",
     "test:auth": "npm run build && node --test tests/auth-contract.test.mjs tests/native-auth.test.mjs tests/logger-redaction.test.mjs",
     "test:security": "npm run build && node --test tests/data-authorization.test.mjs",
+    "test:shared-data": "node tests/shared-data.integration.mjs",
+    "test:integration-guards": "node --test tests/isolated-config.test.mjs",
     "prisma:generate": "prisma generate --schema ../database/schema.prisma && node ./scripts/sync-prisma-client.mjs",
     "prisma:migrate": "prisma migrate dev --schema ../database/schema.prisma",
     "prisma:deploy": "prisma migrate deploy --schema ../database/schema.prisma",
