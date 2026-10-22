@@ -36,9 +36,11 @@ export const getLeads = async (req: AuthenticatedRequest, res: Response) => {
 
 export const createLeadHandler = async (req: AuthenticatedRequest, res: Response) => {
   const body = { ...(req.body || {}) };
-  if (!body.agentId && req.user?.sub) body.agentId = req.user.sub;
+  if (req.user?.role === "EMPLOYEE" || (!body.agentId && req.user?.sub)) body.agentId = req.user?.sub;
 
-  const lead = await createLead(body);
+  const lead = await createLead(body, {
+    userId: req.user?.sub, role: req.user?.role, email: req.user?.email, displayName: req.user?.displayName
+  });
   await publishEvent("lead.created", { lead });
   await publishEvent("plot.updated", { plotId: lead.plotId });
 
@@ -63,7 +65,7 @@ export const updateLeadHandler = async (req: AuthenticatedRequest, res: Response
 
 export const deleteLeadHandler = async (req: AuthenticatedRequest, res: Response) => {
   const lead = await deleteLead(req.params.leadId);
-  await publishEvent("lead.deleted", { leadId: lead.id });
+  await publishEvent("lead.deleted", { leadId: lead.id, lead });
   await publishEvent("plot.updated", { plotId: lead.plotId });
 
   return res.json({

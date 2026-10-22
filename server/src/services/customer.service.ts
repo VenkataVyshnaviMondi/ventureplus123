@@ -1,5 +1,21 @@
 import { prisma } from "../config/prisma.js";
 import { getPagination } from "../utils/pagination.js";
+import { customerRecordScope, employeeOwnerAliases, type CustomerRequester } from "./customerAccess.js";
+import { HttpError } from "../utils/httpError.js";
+
+const mutationScope = async (requester?: CustomerRequester) => {
+  if (!requester || !["ADMIN", "EMPLOYEE"].includes(requester.role ?? "")) {
+    throw new HttpError(403, "Insufficient permissions");
+  }
+  return customerRecordScope(requester);
+};
+
+const employeeOwnerFor = async (requester?: CustomerRequester) => {
+  if (requester?.role !== "EMPLOYEE") return undefined;
+  const [owner] = await employeeOwnerAliases(requester);
+  if (!owner) throw new HttpError(403, "Employee ownership requires administrator review");
+  return owner;
+};
 
 type CustomerStatus = "HOT_LEAD" | "FOLLOWING_UP" | "CONFIRMED_NOT_PAID" | "PAID_ADVANCE" | "BOOKED";
 
@@ -14,45 +30,7 @@ export const listCustomerRecords = async (filters: {
   requester?: { userId?: string; role?: string; email?: string; displayName?: string };
 }) => {
   const { skip, take, page, pageSize } = getPagination(filters.page, filters.pageSize);
-  const where: any = {};
-
-  if (filters.requester?.role === "CUSTOMER" && filters.requester.email) {
-    where.OR = [
-      { notes: { contains: `Email: ${filters.requester.email}` } },
-      { notes: { contains: filters.requester.email } }
-    ];
-  }
-
-  if (filters.requester?.role === "EMPLOYEE") {
-    const ownerAliases = new Set<string>();
-    if (filters.requester.email?.trim()) ownerAliases.add(filters.requester.email.trim());
-    if (filters.requester.displayName?.trim()) ownerAliases.add(filters.requester.displayName.trim());
-
-    if (filters.requester.userId) {
-      const me = await prisma.user.findUnique({
-        where: { id: filters.requester.userId },
-        select: { fullName: true, displayName: true, email: true, employeeId: true }
-      });
-
-      if (me?.fullName?.trim()) ownerAliases.add(me.fullName.trim());
-      if (me?.displayName?.trim()) ownerAliases.add(me.displayName.trim());
-      if (me?.email?.trim()) ownerAliases.add(me.email.trim());
-      if (me?.employeeId?.trim()) ownerAliases.add(me.employeeId.trim());
-    }
-
-    const aliases = Array.from(ownerAliases);
-    if (!aliases.length) {
-      where.id = "__no_employee_alias_match__";
-    } else {
-      where.OR = [
-        ...(where.OR ?? []),
-        { leadName: { in: aliases } },
-        { recordOwner: { in: aliases } }
-      ];
-    }
-  }
-
-  const finalWhere = Object.keys(where).length ? where : undefined;
+  const finalWhere = await customerRecordScope(filters.requester);
 
   const [total, records] = await Promise.all([
     prisma.customerRecord.count({ where: finalWhere }),
@@ -86,20 +64,8 @@ export const createCustomerRecord = async (input: {
   leadName?: string;
   notes?: string;
 }, requester?: { userId?: string; role?: string; email?: string; displayName?: string }) => {
-  const ownerOverride =
-    requester?.role === "EMPLOYEE"
-      ? await prisma.user.findUnique({
-          where: { id: requester.userId ?? "" },
-          select: { fullName: true, displayName: true, email: true }
-        })
-      : null;
-
-  const employeeOwner =
-    ownerOverride?.fullName?.trim() ||
-    ownerOverride?.displayName?.trim() ||
-    ownerOverride?.email?.trim() ||
-    requester?.displayName?.trim() ||
-    requester?.email?.trim();
+  await mutationScope(requester);
+  const employeeOwner = await employeeOwnerFor(requester);
 
   const effectiveOwner = (employeeOwner || input.recordOwner || "Unknown").trim();
   const effectiveLeadName = (employeeOwner || input.leadName || input.recordOwner || "Unknown").trim();
@@ -132,20 +98,8 @@ export const updateCustomerRecord = async (id: string, update: {
   leadName?: string;
   notes?: string;
 }, requester?: { userId?: string; role?: string; email?: string; displayName?: string }) => {
-  const ownerOverride =
-    requester?.role === "EMPLOYEE"
-      ? await prisma.user.findUnique({
-          where: { id: requester.userId ?? "" },
-          select: { fullName: true, displayName: true, email: true }
-        })
-      : null;
-
-  const employeeOwner =
-    ownerOverride?.fullName?.trim() ||
-    ownerOverride?.displayName?.trim() ||
-    ownerOverride?.email?.trim() ||
-    requester?.displayName?.trim() ||
-    requester?.email?.trim();
+  const scope = await mutationScope(requester);
+  const employeeOwner = await employeeOwnerFor(requester);
 
   const effectiveOwner = (employeeOwner || update.recordOwner || "Unknown").trim();
   const effectiveLeadName = (employeeOwner || update.leadName || update.recordOwner || "Unknown").trim();
@@ -153,7 +107,7 @@ export const updateCustomerRecord = async (id: string, update: {
   const interested = update.interested ?? deriveInterestedFromStatus(update.status);
 
   return prisma.customerRecord.update({
-    where: { id },
+    where: { id, AND: [scope] },
     data: {
       contactName: update.contactName,
       contactNumber: update.contactNumber,
@@ -168,8 +122,9 @@ export const updateCustomerRecord = async (id: string, update: {
   });
 };
 
-export const deleteCustomerRecord = async (id: string) => {
+export const deleteCustomerRecord = async (id: string, requester?: CustomerRequester) => {
+  const scope = await mutationScope(requester);
   return prisma.customerRecord.delete({
-    where: { id }
+    where: { id, AND: [scope] }
   });
 };

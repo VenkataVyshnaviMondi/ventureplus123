@@ -1,5 +1,7 @@
 import { prisma } from "../config/prisma.js";
 import { getPagination } from "../utils/pagination.js";
+import { customerRecordScope, employeeOwnerAliases, type CustomerRequester } from "./customerAccess.js";
+import { HttpError } from "../utils/httpError.js";
 
 export const listLeads = async (filters: {
   plotId?: string;
@@ -55,7 +57,13 @@ export const createLead = async (input: {
   notes?: string;
   photoUrl?: string;
   agentId?: string;
-}) => {
+}, requester?: CustomerRequester) => {
+  if (!requester || !["ADMIN", "EMPLOYEE"].includes(requester.role ?? "")) {
+    throw new HttpError(403, "Insufficient permissions");
+  }
+  const scope = await customerRecordScope(requester);
+  const employeeOwner = requester.role === "EMPLOYEE" ? (await employeeOwnerAliases(requester))[0] : undefined;
+  if (requester.role === "EMPLOYEE" && !employeeOwner) throw new HttpError(403, "Employee ownership requires administrator review");
   return prisma.$transaction(async (tx) => {
     const lead = await tx.lead.create({
       data: {
@@ -84,7 +92,7 @@ export const createLead = async (input: {
       input.agentId ? tx.user.findUnique({ where: { id: input.agentId } }) : Promise.resolve(null)
     ]);
 
-    const recordOwner = agent?.fullName || agent?.displayName || agent?.email || "Unknown";
+    const recordOwner = employeeOwner || agent?.fullName || agent?.displayName || agent?.email || "Unknown";
     const ventureName = plot?.venture?.name || "";
     const plotInterested = plot?.plotNumber || input.plotNumber || "";
     const locationName = plot?.venture?.location?.name || input.location;
@@ -140,7 +148,7 @@ export const createLead = async (input: {
 
     if (existing) {
       await tx.customerRecord.update({
-        where: { id: existing.id },
+        where: { id: existing.id, AND: [scope] },
         data: {
           budget: String(input.pricePerSqYard),
           interested: true,

@@ -53,8 +53,10 @@ export const updateCustomerRecordHandler = async (req: AuthenticatedRequest, res
 };
 
 export const deleteCustomerRecordHandler = async (req: AuthenticatedRequest, res: Response) => {
-  const record = await deleteCustomerRecord(req.params.id);
-  await publishEvent("customer.deleted", { recordId: record.id });
+  const record = await deleteCustomerRecord(req.params.id, {
+    userId: req.user?.sub, role: req.user?.role, email: req.user?.email, displayName: req.user?.displayName
+  });
+  await publishEvent("customer.deleted", { recordId: record.id, record });
 
   return res.json({
     success: true,

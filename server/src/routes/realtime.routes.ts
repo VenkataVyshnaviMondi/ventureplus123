@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { requireAuth } from "../middleware/auth.js";
-import { subscribe } from "../realtime/events.js";
+import { extractToken, requireAuth } from "../middleware/auth.js";
+import { subscribeAuthorized } from "../realtime/authorizedEvents.js";
 
 const router = Router();
 
@@ -14,11 +14,11 @@ router.get("/stream", requireAuth, (req: Request, res: Response) => {
   res.write(`event: connected\n`);
   res.write(`data: ${JSON.stringify({ ok: true, ts: new Date().toISOString() })}\n\n`);
 
-  const unsubscribe = subscribe((event) => {
+  const unsubscribe = subscribeAuthorized(extractToken(req), (event) => {
     res.write(`event: ${event.type}\n`);
     res.write(`id: ${event.id}\n`);
     res.write(`data: ${JSON.stringify(event)}\n\n`);
-  });
+  }, () => res.end());
 
   const heartbeat = setInterval(() => {
     res.write(": ping\n\n");

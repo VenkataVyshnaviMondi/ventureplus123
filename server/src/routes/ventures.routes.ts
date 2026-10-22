@@ -2,7 +2,6 @@ import { Router } from "express";
 import type { Request } from "express";
 import { z } from "zod";
 import { createVenture, getVentures, getVenture, uploadVentureLayout, uploadVenturePhoto, updateRegions } from "../controllers/ventures.controller.js";
-import { cacheResponse } from "../middleware/cache.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -45,7 +44,7 @@ router.post(
   validate({ body: createVentureSchema }),
   asyncHandler(createVenture)
 );
-router.get("/ventures", requireAuth, cacheResponse(60), asyncHandler(getVentures));
+router.get("/ventures", requireAuth, asyncHandler(getVentures));
 router.get("/ventures/:id", requireAuth, asyncHandler(getVenture));
 router.post(
   "/ventures/:id/layout",

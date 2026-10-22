@@ -1,5 +1,6 @@
 import { prisma } from "../config/prisma.js";
 import type { TrackingStatus } from "@prisma/client";
+import { customerEmailScope } from "./customerAccess.js";
 
 export interface TrackingUpdateInput {
   customerId: string;
@@ -12,14 +13,9 @@ export interface TrackingUpdateInput {
 
 export const listTrackingUpdates = async (requester?: { role?: string; email?: string }) => {
   const where =
-    requester?.role === "CUSTOMER" && requester.email
+    requester?.role === "CUSTOMER"
       ? {
-          customer: {
-            OR: [
-              { notes: { contains: `Email: ${requester.email}` } },
-              { notes: { contains: requester.email } }
-            ]
-          }
+          customer: customerEmailScope(requester.email)
         }
       : undefined;
 

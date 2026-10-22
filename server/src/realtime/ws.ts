@@ -3,8 +3,8 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { parse as parseCookie } from "cookie";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
-import { verifyAccessToken } from "../utils/tokens.js";
-import { subscribe } from "./events.js";
+import { resolveSession } from "../middleware/auth.js";
+import { subscribeAuthorized } from "./authorizedEvents.js";
 
 const getTokenFromRequest = (req: IncomingMessage) => {
   const authHeader = req.headers.authorization;
@@ -42,7 +42,7 @@ export const attachWebSocketServer = (server: HttpServer) => {
     clearInterval(interval);
   });
 
-  wss.on("connection", (socket: any, req: IncomingMessage) => {
+  wss.on("connection", async (socket: any, req: IncomingMessage) => {
     const token = getTokenFromRequest(req);
     if (!token) {
       socket.close(1008, "Unauthorized");
@@ -50,24 +50,25 @@ export const attachWebSocketServer = (server: HttpServer) => {
     }
 
     try {
-      verifyAccessToken(token);
-    } catch (err) {
-      logger.warn({ err }, "WebSocket auth failed");
+      await resolveSession(token);
+    } catch {
+      logger.warn({ event: "websocket_auth_failed" }, "WebSocket auth failed");
       socket.close(1008, "Unauthorized");
       return;
     }
 
     const ws = socket as any;
+    if (ws.readyState !== ws.OPEN) return;
     ws.isAlive = true;
     ws.on("pong", () => markAlive(ws));
 
     ws.send(JSON.stringify({ type: "connected", ts: new Date().toISOString() }));
 
-    const unsubscribe = subscribe((event) => {
+    const unsubscribe = subscribeAuthorized(token, (event) => {
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify(event));
       }
-    });
+    }, () => ws.close(1008, "Unauthorized"));
 
     ws.on("close", () => {
       unsubscribe();
