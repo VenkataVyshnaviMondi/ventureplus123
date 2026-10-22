@@ -1,11 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
+import { Binary, ObjectId } from "bson";
 import { Prisma } from "@prisma/client";
 import { convert } from "../scripts/mongo-mysql-record.mjs";
 
-const require = createRequire(new URL("../../backend/package.json", import.meta.url));
-const { Binary, ObjectId } = require("mongodb");
 const model = (name) => Prisma.dmmf.datamodel.models.find((entry) => entry.name === name);
 
 test("preserves UUID IDs, password hashes, timestamps and nullable codes", () => {
