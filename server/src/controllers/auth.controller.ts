@@ -6,6 +6,7 @@ import { changeOwnPassword, createCustomerCredentials, loginUser, registerUser }
 import { getUserById } from "../services/user.service.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 import { publishEvent } from "../realtime/events.js";
+import { logger } from "../config/logger.js";
 
 const accessCookieOptions = {
   httpOnly: true,
@@ -13,6 +14,19 @@ const accessCookieOptions = {
   secure: env.nodeEnv === "production",
   path: "/",
   ...(env.cookieDomain ? { domain: env.cookieDomain } : {})
+};
+
+const loginFailure = (res: Response, error: unknown) => {
+  const message = error instanceof Error ? error.message : "";
+  if (["Invalid email or password", "Invalid admin code"].includes(message)) {
+    return res.status(401).json({ success: false, message });
+  }
+  if (message === "Employee account is frozen") {
+    return res.status(403).json({ success: false, message });
+  }
+  // Classify infrastructure failures without logging DB URLs, queries or credentials.
+  logger.error({ event: "auth_backend_failure" }, "Authentication backend failed");
+  return res.status(500).json({ success: false, message: "Unable to sign in. Please try again later." });
 };
 
 export const getCsrfToken = (_req: Request, res: Response) => {
@@ -26,8 +40,8 @@ export const getCsrfToken = (_req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { email, password, adminCode } = req.body;
-    const { user, token } = await loginUser(email, password, adminCode);
+    const { email, password, adminCode, expectedRole } = req.body;
+    const { user, token } = await loginUser(email, password, adminCode, expectedRole);
 
     res.cookie(env.accessTokenCookieName, token, accessCookieOptions);
     issueCsrfToken(res);
@@ -37,13 +51,23 @@ export const login = async (req: Request, res: Response) => {
       data: { user },
       message: "Login successful"
     });
-  } catch (error: any) {
-    const message = error?.message || "Login failed";
-    const status = message.toLowerCase().includes("invalid") || message.toLowerCase().includes("required") ? 401 : 500;
-    return res.status(status).json({
-      success: false,
-      message
+  } catch (error: unknown) {
+    return loginFailure(res, error);
+  }
+};
+
+export const nativeLogin = async (req: Request, res: Response) => {
+  try {
+    const { email, password, adminCode, expectedRole } = req.body;
+    const { user, token } = await loginUser(email, password, adminCode, expectedRole);
+
+    return res.json({
+      success: true,
+      data: { user, token },
+      message: "Login successful"
     });
+  } catch (error: unknown) {
+    return loginFailure(res, error);
   }
 };
 
