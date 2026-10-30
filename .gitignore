@@ -36,3 +36,7 @@ uploads/
 
 .deployment-tools/
 .vercel/
+
+# TiDB CA is provided by server environment at runtime, never from the repository.
+tidb-ca.pem
+tidb-ca.pem.*.tmp
